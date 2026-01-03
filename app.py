@@ -7,13 +7,13 @@ from collections import Counter
 from datetime import datetime
 
 # -----------------------------
-# Environment Variables (Railway safe)
+# Environment Variables (Render)
 # -----------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")  # fallback
+ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")
 
 if not OPENROUTER_API_KEY:
-    st.error("⚠️ OPENROUTER_API_KEY is missing. Add it in Railway Variables.")
+    st.error("⚠️ OPENROUTER_API_KEY not found in environment variables.")
     st.stop()
 
 # -----------------------------
@@ -40,12 +40,12 @@ st.markdown("""
 }
 </style>
 <div class="chat-header">
-   CHAT WITH NEXTGEN
+    ASK ANYTHING ABOUT BILAL
 </div>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Knowledge directory
+# Knowledge Directory
 # -----------------------------
 KNOWLEDGE_DIR = "knowledge_pdfs"
 os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
@@ -59,8 +59,10 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hi! What can I help you with?"}
     ]
+
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
+
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -85,16 +87,14 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Message...")
 
 if user_input:
-    # ---- Admin Unlock ----
+    # Admin unlock
     if user_input.strip() == ADMIN_TRIGGER:
         st.session_state.admin_unlocked = True
         reply = "🔐 Admin panel unlocked."
         st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
             st.markdown(reply)
-        st.experimental_rerun()  # force rerun to show sidebar immediately
 
-    # ---- Normal User Message ----
     else:
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -138,9 +138,9 @@ if user_input:
                             timeout=30
                         )
                         data = response.json()
-                        bot_reply = data["choices"][0]["message"]["content"] if "choices" in data else "⚠️ Error generating response."
+                        bot_reply = data["choices"][0]["message"]["content"]
                     except Exception as e:
-                        bot_reply = f"⚠️ Error generating response: {e}"
+                        bot_reply = "⚠️ Error generating response."
 
                     st.markdown(bot_reply)
 
@@ -152,12 +152,11 @@ if user_input:
         )
 
 # -----------------------------
-# Admin Panel Sidebar
+# Admin Panel
 # -----------------------------
 if st.session_state.admin_unlocked:
     st.sidebar.header("🔐 Admin Panel")
 
-    # ---- PDF Upload ----
     uploaded_files = st.sidebar.file_uploader(
         "Upload Knowledge PDF(s)",
         type="pdf",
@@ -166,24 +165,20 @@ if st.session_state.admin_unlocked:
 
     if uploaded_files:
         combined_text = ""
+
         for file in uploaded_files:
-            try:
-                reader = PyPDF2.PdfReader(file)
-                for page in reader.pages:
-                    combined_text += page.extract_text() or ""
-            except Exception as e:
-                st.sidebar.error(f"⚠️ Error reading {file.name}: {e}")
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                combined_text += page.extract_text() or ""
 
         combined_text = combined_text[:MAX_CONTEXT]
 
-        if combined_text:
-            with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-                f.write(combined_text)
-            st.sidebar.success("✅ Knowledge updated successfully")
-        else:
-            st.sidebar.warning("⚠️ Uploaded PDFs had no text.")
+        with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+            f.write(combined_text)
 
-    # ---- Chat Analytics ----
+        st.sidebar.success("✅ Knowledge updated successfully")
+
+    # Analytics
     st.sidebar.subheader("Chat Statistics")
     total_questions = len(st.session_state.chat_history)
     st.sidebar.markdown(f"**Total Questions:** {total_questions}")
