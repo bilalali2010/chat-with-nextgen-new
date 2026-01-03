@@ -10,7 +10,6 @@ from datetime import datetime
 # Environment Variables
 # -----------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")  # fallback
 
 if not OPENROUTER_API_KEY:
     st.error("⚠️ OPENROUTER_API_KEY is missing. Add it in Railway Variables.")
@@ -73,16 +72,26 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# Admin Panel Sidebar (Hidden Password Input)
+# Temporary Hardcoded Admin Password (for testing)
 # -----------------------------
+HARDCODED_ADMIN_PASSWORD = "@supersecret"  # <-- set your test password here
+
 if not st.session_state.admin_unlocked:
     st.sidebar.header("🔐 Admin Login")
-    password = st.sidebar.text_input(
+
+    # Store input in session state
+    if "admin_password_input" not in st.session_state:
+        st.session_state.admin_password_input = ""
+    
+    st.session_state.admin_password_input = st.sidebar.text_input(
         "Enter Admin Password",
-        type="password"
+        type="password",
+        value=st.session_state.admin_password_input
     )
-    if password:
-        if password.strip() == ADMIN_TRIGGER:
+    
+    # Submit button
+    if st.sidebar.button("Unlock Admin Panel"):
+        if st.session_state.admin_password_input.strip() == HARDCODED_ADMIN_PASSWORD:
             st.session_state.admin_unlocked = True
             st.sidebar.success("🔐 Admin panel unlocked!")
             st.experimental_rerun()
