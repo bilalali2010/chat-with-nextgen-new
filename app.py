@@ -19,7 +19,7 @@ if not OPENROUTER_API_KEY:
 # Page Config
 # -----------------------------
 st.set_page_config(
-    page_title="ASK ANYTHING ABOUT BILAL",
+    page_title="CHAT WITH NEXTGEN",
     layout="centered"
 )
 
