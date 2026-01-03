@@ -7,13 +7,13 @@ from collections import Counter
 from datetime import datetime
 
 # -----------------------------
-# Environment Variables (Render)
+# Environment Variables
 # -----------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")
+ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")  # fallback
 
 if not OPENROUTER_API_KEY:
-    st.error("⚠️ OPENROUTER_API_KEY not found in environment variables.")
+    st.error("⚠️ OPENROUTER_API_KEY is missing. Add it in Railway Variables.")
     st.stop()
 
 # -----------------------------
@@ -40,12 +40,12 @@ st.markdown("""
 }
 </style>
 <div class="chat-header">
-    ASK ANYTHING ABOUT BILAL
+   CHAT WITH NEXTGEN
 </div>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Knowledge Directory
+# Knowledge directory
 # -----------------------------
 KNOWLEDGE_DIR = "knowledge_pdfs"
 os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
@@ -53,16 +53,14 @@ MAX_CONTEXT = 4500
 KNOWLEDGE_FILE = "knowledge.txt"
 
 # -----------------------------
-# Session State
+# Session State Initialization
 # -----------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hi! What can I help you with?"}
     ]
-
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
-
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -73,6 +71,23 @@ knowledge = ""
 if os.path.exists(KNOWLEDGE_FILE):
     with open(KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
         knowledge = f.read()
+
+# -----------------------------
+# Admin Panel Sidebar (Hidden Password Input)
+# -----------------------------
+if not st.session_state.admin_unlocked:
+    st.sidebar.header("🔐 Admin Login")
+    password = st.sidebar.text_input(
+        "Enter Admin Password",
+        type="password"
+    )
+    if password:
+        if password.strip() == ADMIN_TRIGGER:
+            st.session_state.admin_unlocked = True
+            st.sidebar.success("🔐 Admin panel unlocked!")
+            st.experimental_rerun()
+        else:
+            st.sidebar.error("❌ Incorrect password")
 
 # -----------------------------
 # Display Chat Messages
@@ -87,76 +102,68 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Message...")
 
 if user_input:
-    # Admin unlock
-    if user_input.strip() == ADMIN_TRIGGER:
-        st.session_state.admin_unlocked = True
-        reply = "🔐 Admin panel unlocked."
-        st.session_state.messages.append({"role": "assistant", "content": reply})
-        with st.chat_message("assistant"):
-            st.markdown(reply)
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
+    if not knowledge:
+        bot_reply = "⚠️ No knowledge uploaded yet. Admin must upload PDFs first."
     else:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-        if not knowledge:
-            bot_reply = "⚠️ No knowledge uploaded yet. Admin must upload PDFs first."
-        else:
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }
+        payload = {
+            "model": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful AI assistant. "
+                        "Answer SHORT (1-2 sentences) and ONLY using the document. "
+                        "If the answer is not present, reply exactly: 'Information not available.'"
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"Document:\n{knowledge}\n\nQuestion:\n{user_input}"
+                }
+            ],
+            "max_output_tokens": 80,
+            "temperature": 0.2
+        }
 
-            payload = {
-                "model": "nvidia/nemotron-3-nano-30b-a3b:free",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a helpful AI assistant. "
-                            "Answer SHORT (1-2 sentences) and ONLY using the document. "
-                            "If the answer is not present, reply exactly: 'Information not available.'"
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Document:\n{knowledge}\n\nQuestion:\n{user_input}"
-                    }
-                ],
-                "max_output_tokens": 80,
-                "temperature": 0.2
-            }
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    response = requests.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=30
+                    )
+                    data = response.json()
+                    bot_reply = data["choices"][0]["message"]["content"] if "choices" in data else "⚠️ Error generating response."
+                except Exception as e:
+                    bot_reply = f"⚠️ Error generating response: {e}"
 
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    try:
-                        response = requests.post(
-                            "https://openrouter.ai/api/v1/chat/completions",
-                            headers=headers,
-                            json=payload,
-                            timeout=30
-                        )
-                        data = response.json()
-                        bot_reply = data["choices"][0]["message"]["content"]
-                    except Exception as e:
-                        bot_reply = "⚠️ Error generating response."
+                st.markdown(bot_reply)
 
-                    st.markdown(bot_reply)
-
-        st.session_state.messages.append(
-            {"role": "assistant", "content": bot_reply}
-        )
-        st.session_state.chat_history.append(
-            (user_input, bot_reply, datetime.now())
-        )
+    st.session_state.messages.append(
+        {"role": "assistant", "content": bot_reply}
+    )
+    st.session_state.chat_history.append(
+        (user_input, bot_reply, datetime.now())
+    )
 
 # -----------------------------
-# Admin Panel
+# Admin Panel Sidebar (After Unlock)
 # -----------------------------
 if st.session_state.admin_unlocked:
     st.sidebar.header("🔐 Admin Panel")
 
+    # ---- PDF Upload ----
     uploaded_files = st.sidebar.file_uploader(
         "Upload Knowledge PDF(s)",
         type="pdf",
@@ -165,20 +172,24 @@ if st.session_state.admin_unlocked:
 
     if uploaded_files:
         combined_text = ""
-
         for file in uploaded_files:
-            reader = PyPDF2.PdfReader(file)
-            for page in reader.pages:
-                combined_text += page.extract_text() or ""
+            try:
+                reader = PyPDF2.PdfReader(file)
+                for page in reader.pages:
+                    combined_text += page.extract_text() or ""
+            except Exception as e:
+                st.sidebar.error(f"⚠️ Error reading {file.name}: {e}")
 
         combined_text = combined_text[:MAX_CONTEXT]
 
-        with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-            f.write(combined_text)
+        if combined_text:
+            with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+                f.write(combined_text)
+            st.sidebar.success("✅ Knowledge updated successfully")
+        else:
+            st.sidebar.warning("⚠️ Uploaded PDFs had no text.")
 
-        st.sidebar.success("✅ Knowledge updated successfully")
-
-    # Analytics
+    # ---- Chat Analytics ----
     st.sidebar.subheader("Chat Statistics")
     total_questions = len(st.session_state.chat_history)
     st.sidebar.markdown(f"**Total Questions:** {total_questions}")
