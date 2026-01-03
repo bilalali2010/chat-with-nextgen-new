@@ -7,13 +7,13 @@ from collections import Counter
 from datetime import datetime
 
 # -----------------------------
-# Environment Variables (Render)
+# Environment Variables (Railway safe)
 # -----------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")
+ADMIN_TRIGGER = os.getenv("ADMIN_TRIGGER", "@admin")  # fallback
 
 if not OPENROUTER_API_KEY:
-    st.error("⚠️ OPENROUTER_API_KEY not found in environment variables.")
+    st.error("⚠️ OPENROUTER_API_KEY is missing. Add it in Railway Variables.")
     st.stop()
 
 # -----------------------------
@@ -40,12 +40,12 @@ st.markdown("""
 }
 </style>
 <div class="chat-header">
-    ASK ANYTHING ABOUT BILAL
+   CHAT WITH NEXTGEN
 </div>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Knowledge Directory
+# Knowledge directory
 # -----------------------------
 KNOWLEDGE_DIR = "knowledge_pdfs"
 os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
@@ -59,10 +59,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hi! What can I help you with?"}
     ]
-
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
-
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -94,7 +92,6 @@ if user_input:
         st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
             st.markdown(reply)
-
     else:
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -138,9 +135,9 @@ if user_input:
                             timeout=30
                         )
                         data = response.json()
-                        bot_reply = data["choices"][0]["message"]["content"]
+                        bot_reply = data["choices"][0]["message"]["content"] if "choices" in data else "⚠️ Error generating response."
                     except Exception as e:
-                        bot_reply = "⚠️ Error generating response."
+                        bot_reply = f"⚠️ Error generating response: {e}"
 
                     st.markdown(bot_reply)
 
@@ -165,12 +162,10 @@ if st.session_state.admin_unlocked:
 
     if uploaded_files:
         combined_text = ""
-
         for file in uploaded_files:
             reader = PyPDF2.PdfReader(file)
             for page in reader.pages:
                 combined_text += page.extract_text() or ""
-
         combined_text = combined_text[:MAX_CONTEXT]
 
         with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
