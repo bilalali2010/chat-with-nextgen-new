@@ -74,27 +74,25 @@ if os.path.exists(KNOWLEDGE_FILE):
 # -----------------------------
 # Temporary Hardcoded Admin Password (for testing)
 # -----------------------------
-HARDCODED_ADMIN_PASSWORD = "@supersecret"  # <-- set your test password here
+HARDCODED_ADMIN_PASSWORD = "@supersecret"  # <-- put your test password here
 
 if not st.session_state.admin_unlocked:
     st.sidebar.header("🔐 Admin Login")
 
-    # Store input in session state
     if "admin_password_input" not in st.session_state:
         st.session_state.admin_password_input = ""
-    
+
     st.session_state.admin_password_input = st.sidebar.text_input(
         "Enter Admin Password",
         type="password",
         value=st.session_state.admin_password_input
     )
-    
-    # Submit button
+
     if st.sidebar.button("Unlock Admin Panel"):
         if st.session_state.admin_password_input.strip() == HARDCODED_ADMIN_PASSWORD:
             st.session_state.admin_unlocked = True
             st.sidebar.success("🔐 Admin panel unlocked!")
-            st.experimental_rerun()
+            st.stop()  # <-- safely triggers rerun
         else:
             st.sidebar.error("❌ Incorrect password")
 
