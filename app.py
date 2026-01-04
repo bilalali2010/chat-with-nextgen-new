@@ -7,24 +7,25 @@ from collections import Counter
 from datetime import datetime
 
 # -----------------------------
-# Environment Variables
+# CONFIG
 # -----------------------------
+HARDCODED_ADMIN_PASSWORD = "@supersecret"  # TEMP PASSWORD
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not OPENROUTER_API_KEY:
-    st.error("⚠️ OPENROUTER_API_KEY is missing. Add it in Railway Variables.")
+    st.error("⚠️ OPENROUTER_API_KEY missing")
     st.stop()
 
 # -----------------------------
-# Page Config
+# PAGE CONFIG
 # -----------------------------
 st.set_page_config(
-    page_title="CHAT WITH NEXTGEN",
+    page_title="ASK ANYTHING ABOUT BILAL",
     layout="centered"
 )
 
 # -----------------------------
-# Custom Header
+# HEADER
 # -----------------------------
 st.markdown("""
 <style>
@@ -38,33 +39,31 @@ st.markdown("""
     text-align: center;
 }
 </style>
-<div class="chat-header">
-   CHAT WITH NEXTGEN
-</div>
+<div class="chat-header">CHAT WITH NEXTGEN</div>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Knowledge directory
+# FILE CONFIG
 # -----------------------------
-KNOWLEDGE_DIR = "knowledge_pdfs"
-os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
-MAX_CONTEXT = 4500
 KNOWLEDGE_FILE = "knowledge.txt"
+MAX_CONTEXT = 4500
 
 # -----------------------------
-# Session State Initialization
+# SESSION STATE
 # -----------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hi! What can I help you with?"}
     ]
+
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
+
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 # -----------------------------
-# Load Knowledge
+# LOAD KNOWLEDGE
 # -----------------------------
 knowledge = ""
 if os.path.exists(KNOWLEDGE_FILE):
@@ -72,49 +71,34 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# Temporary Hardcoded Admin Password (for testing)
-# -----------------------------
-HARDCODED_ADMIN_PASSWORD = "@supersecret"  # <-- put your test password here
-
-if not st.session_state.admin_unlocked:
-    st.sidebar.header("🔐 Admin Login")
-
-    if "admin_password_input" not in st.session_state:
-        st.session_state.admin_password_input = ""
-
-    st.session_state.admin_password_input = st.sidebar.text_input(
-        "Enter Admin Password",
-        type="password",
-        value=st.session_state.admin_password_input
-    )
-
-    if st.sidebar.button("Unlock Admin Panel"):
-        if st.session_state.admin_password_input.strip() == HARDCODED_ADMIN_PASSWORD:
-            st.session_state.admin_unlocked = True
-            st.sidebar.success("🔐 Admin panel unlocked!")
-            st.stop()  # <-- safely triggers rerun
-        else:
-            st.sidebar.error("❌ Incorrect password")
-
-# -----------------------------
-# Display Chat Messages
+# SHOW CHAT
 # -----------------------------
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 # -----------------------------
-# Chat Input
+# CHAT INPUT
 # -----------------------------
 user_input = st.chat_input("Message...")
 
 if user_input:
+    # 🔐 ADMIN UNLOCK VIA CHAT
+    if user_input.strip() == HARDCODED_ADMIN_PASSWORD:
+        st.session_state.admin_unlocked = True
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "🔐 Admin panel unlocked."
+        })
+        st.stop()
+
+    # NORMAL MESSAGE
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
     if not knowledge:
-        bot_reply = "⚠️ No knowledge uploaded yet. Admin must upload PDFs first."
+        bot_reply = "⚠️ No knowledge uploaded yet. Admin must upload PDFs or text."
     else:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -127,9 +111,8 @@ if user_input:
                 {
                     "role": "system",
                     "content": (
-                        "You are a helpful AI assistant. "
-                        "Answer SHORT (1-2 sentences) and ONLY using the document. "
-                        "If the answer is not present, reply exactly: 'Information not available.'"
+                        "Answer SHORT (1-2 sentences) ONLY using the document. "
+                        "If not found reply exactly: Information not available."
                     )
                 },
                 {
@@ -144,78 +127,69 @@ if user_input:
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    response = requests.post(
+                    res = requests.post(
                         "https://openrouter.ai/api/v1/chat/completions",
                         headers=headers,
                         json=payload,
                         timeout=30
                     )
-                    data = response.json()
-                    bot_reply = data["choices"][0]["message"]["content"] if "choices" in data else "⚠️ Error generating response."
+                    data = res.json()
+                    bot_reply = data["choices"][0]["message"]["content"]
                 except Exception as e:
-                    bot_reply = f"⚠️ Error generating response: {e}"
+                    bot_reply = f"⚠️ Error: {e}"
 
                 st.markdown(bot_reply)
 
-    st.session_state.messages.append(
-        {"role": "assistant", "content": bot_reply}
-    )
-    st.session_state.chat_history.append(
-        (user_input, bot_reply, datetime.now())
-    )
+    st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+    st.session_state.chat_history.append((user_input, bot_reply, datetime.now()))
 
 # -----------------------------
-# Admin Panel Sidebar (After Unlock)
+# ADMIN PANEL (HIDDEN)
 # -----------------------------
 if st.session_state.admin_unlocked:
     st.sidebar.header("🔐 Admin Panel")
 
-    # ---- PDF Upload ----
-    uploaded_files = st.sidebar.file_uploader(
-        "Upload Knowledge PDF(s)",
+    # ---- MULTIPLE PDF UPLOAD ----
+    uploaded_pdfs = st.sidebar.file_uploader(
+        "Upload PDF Knowledge",
         type="pdf",
         accept_multiple_files=True
     )
 
-    if uploaded_files:
+    # ---- TEXT INPUT TRAINING ----
+    text_knowledge = st.sidebar.text_area(
+        "Add Training Text",
+        placeholder="Paste custom knowledge here...",
+        height=150
+    )
+
+    if st.sidebar.button("💾 Save Knowledge"):
         combined_text = ""
-        for file in uploaded_files:
-            try:
+
+        # Extract PDFs
+        if uploaded_pdfs:
+            for file in uploaded_pdfs:
                 reader = PyPDF2.PdfReader(file)
                 for page in reader.pages:
                     combined_text += page.extract_text() or ""
-            except Exception as e:
-                st.sidebar.error(f"⚠️ Error reading {file.name}: {e}")
+
+        # Add text input
+        if text_knowledge.strip():
+            combined_text += "\n\n" + text_knowledge.strip()
 
         combined_text = combined_text[:MAX_CONTEXT]
 
-        if combined_text:
+        if combined_text.strip():
             with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
                 f.write(combined_text)
-            st.sidebar.success("✅ Knowledge updated successfully")
+            st.sidebar.success("✅ Knowledge saved successfully")
         else:
-            st.sidebar.warning("⚠️ Uploaded PDFs had no text.")
+            st.sidebar.warning("⚠️ No content to save")
 
-    # ---- Chat Analytics ----
-    st.sidebar.subheader("Chat Statistics")
-    total_questions = len(st.session_state.chat_history)
-    st.sidebar.markdown(f"**Total Questions:** {total_questions}")
+    # ---- ANALYTICS ----
+    st.sidebar.subheader("📊 Chat Stats")
+    st.sidebar.markdown(f"**Total Questions:** {len(st.session_state.chat_history)}")
 
-    if total_questions > 0:
-        questions = [q for q, _, _ in st.session_state.chat_history]
-        freq = Counter(questions).most_common(5)
-
-        st.sidebar.markdown("**Top 5 Questions:**")
-        for q, count in freq:
-            st.sidebar.markdown(f"- {q} ({count})")
-
+    if st.session_state.chat_history:
         last_active = st.session_state.chat_history[-1][2].strftime("%Y-%m-%d %H:%M:%S")
         st.sidebar.markdown(f"**Last Active:** {last_active}")
-
-        if st.sidebar.button("Export Chat History"):
-            df = pd.DataFrame(
-                st.session_state.chat_history,
-                columns=["Question", "Answer", "Timestamp"]
-            )
-            df.to_csv("chat_history.csv", index=False)
-            st.sidebar.success("✅ Chat history exported")
