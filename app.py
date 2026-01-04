@@ -9,7 +9,7 @@ from datetime import datetime
 # -----------------------------
 # CONFIG
 # -----------------------------
-HARDCODED_ADMIN_PASSWORD = "@supersecret"  # TEMP PASSWORD
+HARDCODED_ADMIN_PASSWORD = "@supersecret"  # TEMP
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not OPENROUTER_API_KEY:
@@ -71,7 +71,53 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# SHOW CHAT
+# SIDEBAR ADMIN PANEL (ALWAYS VISIBLE)
+# -----------------------------
+st.sidebar.header("🔐 Admin Panel")
+
+if st.session_state.admin_unlocked:
+    st.sidebar.success("Admin Unlocked")
+else:
+    st.sidebar.warning("Admin Locked")
+    st.sidebar.markdown("**Type password in chat to unlock**")
+
+uploaded_pdfs = st.sidebar.file_uploader(
+    "Upload PDF Knowledge",
+    type="pdf",
+    accept_multiple_files=True,
+    disabled=not st.session_state.admin_unlocked
+)
+
+text_knowledge = st.sidebar.text_area(
+    "Add Training Text",
+    height=150,
+    placeholder="Paste custom knowledge here...",
+    disabled=not st.session_state.admin_unlocked
+)
+
+if st.sidebar.button("💾 Save Knowledge", disabled=not st.session_state.admin_unlocked):
+    combined_text = ""
+
+    if uploaded_pdfs:
+        for file in uploaded_pdfs:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                combined_text += page.extract_text() or ""
+
+    if text_knowledge.strip():
+        combined_text += "\n\n" + text_knowledge.strip()
+
+    combined_text = combined_text[:MAX_CONTEXT]
+
+    if combined_text.strip():
+        with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+            f.write(combined_text)
+        st.sidebar.success("✅ Knowledge saved")
+    else:
+        st.sidebar.warning("⚠️ No content to save")
+
+# -----------------------------
+# CHAT DISPLAY
 # -----------------------------
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -83,7 +129,7 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Message...")
 
 if user_input:
-    # 🔐 ADMIN UNLOCK VIA CHAT
+    # 🔐 ADMIN UNLOCK
     if user_input.strip() == HARDCODED_ADMIN_PASSWORD:
         st.session_state.admin_unlocked = True
         st.session_state.messages.append({
@@ -92,13 +138,12 @@ if user_input:
         })
         st.stop()
 
-    # NORMAL MESSAGE
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
     if not knowledge:
-        bot_reply = "⚠️ No knowledge uploaded yet. Admin must upload PDFs or text."
+        bot_reply = "⚠️ No knowledge uploaded yet."
     else:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -144,52 +189,11 @@ if user_input:
     st.session_state.chat_history.append((user_input, bot_reply, datetime.now()))
 
 # -----------------------------
-# ADMIN PANEL (HIDDEN)
+# SIDEBAR ANALYTICS
 # -----------------------------
-if st.session_state.admin_unlocked:
-    st.sidebar.header("🔐 Admin Panel")
+st.sidebar.subheader("📊 Chat Stats")
+st.sidebar.markdown(f"**Total Questions:** {len(st.session_state.chat_history)}")
 
-    # ---- MULTIPLE PDF UPLOAD ----
-    uploaded_pdfs = st.sidebar.file_uploader(
-        "Upload PDF Knowledge",
-        type="pdf",
-        accept_multiple_files=True
-    )
-
-    # ---- TEXT INPUT TRAINING ----
-    text_knowledge = st.sidebar.text_area(
-        "Add Training Text",
-        placeholder="Paste custom knowledge here...",
-        height=150
-    )
-
-    if st.sidebar.button("💾 Save Knowledge"):
-        combined_text = ""
-
-        # Extract PDFs
-        if uploaded_pdfs:
-            for file in uploaded_pdfs:
-                reader = PyPDF2.PdfReader(file)
-                for page in reader.pages:
-                    combined_text += page.extract_text() or ""
-
-        # Add text input
-        if text_knowledge.strip():
-            combined_text += "\n\n" + text_knowledge.strip()
-
-        combined_text = combined_text[:MAX_CONTEXT]
-
-        if combined_text.strip():
-            with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-                f.write(combined_text)
-            st.sidebar.success("✅ Knowledge saved successfully")
-        else:
-            st.sidebar.warning("⚠️ No content to save")
-
-    # ---- ANALYTICS ----
-    st.sidebar.subheader("📊 Chat Stats")
-    st.sidebar.markdown(f"**Total Questions:** {len(st.session_state.chat_history)}")
-
-    if st.session_state.chat_history:
-        last_active = st.session_state.chat_history[-1][2].strftime("%Y-%m-%d %H:%M:%S")
-        st.sidebar.markdown(f"**Last Active:** {last_active}")
+if st.session_state.chat_history:
+    last_active = st.session_state.chat_history[-1][2].strftime("%Y-%m-%d %H:%M:%S")
+    st.sidebar.markdown(f"**Last Active:** {last_active}")
