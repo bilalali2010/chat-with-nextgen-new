@@ -3,13 +3,12 @@ import os
 import requests
 import PyPDF2
 import pandas as pd
-from collections import Counter
 from datetime import datetime
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-HARDCODED_ADMIN_PASSWORD = "@supersecret"  # TEMP
+ADMIN_PASSWORD = "@supersecret"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not OPENROUTER_API_KEY:
@@ -23,6 +22,12 @@ st.set_page_config(
     page_title="ASK ANYTHING ABOUT BILAL",
     layout="centered"
 )
+
+# -----------------------------
+# SECRET ADMIN URL
+# -----------------------------
+query_params = st.query_params
+IS_ADMIN_PAGE = query_params.get("admin") == "1"
 
 # -----------------------------
 # HEADER
@@ -71,50 +76,51 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# SIDEBAR ADMIN PANEL (ALWAYS VISIBLE)
+# ADMIN PANEL (SECRET URL)
 # -----------------------------
-st.sidebar.header("🔐 Admin Panel")
+if IS_ADMIN_PAGE:
+    st.sidebar.header("🔐 Admin Panel")
 
-if st.session_state.admin_unlocked:
-    st.sidebar.success("Admin Unlocked")
-else:
-    st.sidebar.warning("Admin Locked")
-    st.sidebar.markdown("**Type password in chat to unlock**")
-
-uploaded_pdfs = st.sidebar.file_uploader(
-    "Upload PDF Knowledge",
-    type="pdf",
-    accept_multiple_files=True,
-    disabled=not st.session_state.admin_unlocked
-)
-
-text_knowledge = st.sidebar.text_area(
-    "Add Training Text",
-    height=150,
-    placeholder="Paste custom knowledge here...",
-    disabled=not st.session_state.admin_unlocked
-)
-
-if st.sidebar.button("💾 Save Knowledge", disabled=not st.session_state.admin_unlocked):
-    combined_text = ""
-
-    if uploaded_pdfs:
-        for file in uploaded_pdfs:
-            reader = PyPDF2.PdfReader(file)
-            for page in reader.pages:
-                combined_text += page.extract_text() or ""
-
-    if text_knowledge.strip():
-        combined_text += "\n\n" + text_knowledge.strip()
-
-    combined_text = combined_text[:MAX_CONTEXT]
-
-    if combined_text.strip():
-        with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-            f.write(combined_text)
-        st.sidebar.success("✅ Knowledge saved")
+    if st.session_state.admin_unlocked:
+        st.sidebar.success("Admin Unlocked")
     else:
-        st.sidebar.warning("⚠️ No content to save")
+        st.sidebar.warning("Admin Locked")
+        st.sidebar.markdown("**Type password in chat to unlock**")
+
+    uploaded_pdfs = st.sidebar.file_uploader(
+        "Upload PDF Knowledge",
+        type="pdf",
+        accept_multiple_files=True,
+        disabled=not st.session_state.admin_unlocked
+    )
+
+    text_knowledge = st.sidebar.text_area(
+        "Add Training Text",
+        height=150,
+        placeholder="Paste custom knowledge here...",
+        disabled=not st.session_state.admin_unlocked
+    )
+
+    if st.sidebar.button("💾 Save Knowledge", disabled=not st.session_state.admin_unlocked):
+        combined_text = ""
+
+        if uploaded_pdfs:
+            for file in uploaded_pdfs:
+                reader = PyPDF2.PdfReader(file)
+                for page in reader.pages:
+                    combined_text += page.extract_text() or ""
+
+        if text_knowledge.strip():
+            combined_text += "\n\n" + text_knowledge.strip()
+
+        combined_text = combined_text[:MAX_CONTEXT]
+
+        if combined_text.strip():
+            with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+                f.write(combined_text)
+            st.sidebar.success("✅ Knowledge saved")
+        else:
+            st.sidebar.warning("⚠️ No content to save")
 
 # -----------------------------
 # CHAT DISPLAY
@@ -130,7 +136,7 @@ user_input = st.chat_input("Message...")
 
 if user_input:
     # 🔐 ADMIN UNLOCK
-    if user_input.strip() == HARDCODED_ADMIN_PASSWORD:
+    if IS_ADMIN_PAGE and user_input.strip() == ADMIN_PASSWORD:
         st.session_state.admin_unlocked = True
         st.session_state.messages.append({
             "role": "assistant",
@@ -156,8 +162,8 @@ if user_input:
                 {
                     "role": "system",
                     "content": (
-                        "Answer SHORT (1-2 sentences) ONLY using the document. "
-                        "If not found reply exactly: Information not available."
+                        "Answer SHORT (1–2 sentences) ONLY using the document. "
+                        "If the answer is not present, reply exactly: Information not available."
                     )
                 },
                 {
@@ -187,13 +193,3 @@ if user_input:
 
     st.session_state.messages.append({"role": "assistant", "content": bot_reply})
     st.session_state.chat_history.append((user_input, bot_reply, datetime.now()))
-
-# -----------------------------
-# SIDEBAR ANALYTICS
-# -----------------------------
-st.sidebar.subheader("📊 Chat Stats")
-st.sidebar.markdown(f"**Total Questions:** {len(st.session_state.chat_history)}")
-
-if st.session_state.chat_history:
-    last_active = st.session_state.chat_history[-1][2].strftime("%Y-%m-%d %H:%M:%S")
-    st.sidebar.markdown(f"**Last Active:** {last_active}")
