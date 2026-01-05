@@ -1,4 +1,7 @@
 streamlit
+openai
 requests
 PyPDF2
 pandas
+faiss-cpu
+python-dotenv
