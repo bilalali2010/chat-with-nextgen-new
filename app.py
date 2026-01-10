@@ -91,18 +91,22 @@ div[data-role="assistant"]::before { content: "🤖"; margin-right: 5px; }
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# ADMIN PANEL
+# SESSION STATE INITIALIZATION
 # -----------------------------
-IS_ADMIN_PAGE = "admin" in st.query_params
-
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Hi! I’m NEXTGEN, your assistant. Ask me anything!"}
-    ]
-if "admin_unlocked" not in st.session_state:
-    st.session_state.admin_unlocked = False
+    st.session_state.messages = []
+
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
+if "admin_unlocked" not in st.session_state:
+    st.session_state.admin_unlocked = False
+
+# Add greeting only once
+if len(st.session_state.messages) == 0:
+    st.session_state.messages.append(
+        {"role": "assistant", "content": "Hi! I’m NEXTGEN, your assistant. Ask me anything!"}
+    )
 
 # -----------------------------
 # LOAD KNOWLEDGE
@@ -113,8 +117,10 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# ADMIN PANEL SIDEBAR
+# ADMIN PANEL
 # -----------------------------
+IS_ADMIN_PAGE = "admin" in st.query_params
+
 if IS_ADMIN_PAGE:
     st.sidebar.header("🔐 Admin Panel")
     if not st.session_state.admin_unlocked:
@@ -165,22 +171,17 @@ def render_chat():
             st.markdown(msg["content"])
     st.markdown('</div>', unsafe_allow_html=True)
 
-render_chat()
-
 # -----------------------------
 # CHAT INPUT
 # -----------------------------
 user_input = st.chat_input("Ask NEXTGEN anything...")
 
 if user_input:
-    # Add user message to chat
+    # Append user message
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.chat_history.append((user_input, "", datetime.now()))
 
-    # Refresh chat so user question appears immediately
-    render_chat()
-
-    # Prepare recent chat context
+    # Prepare context for API
     MAX_CONTEXT_CHARS = 2000
     recent_chat_text = ""
     for u, b, _ in reversed(st.session_state.chat_history):
@@ -212,27 +213,26 @@ if user_input:
     }
 
     # Call OpenRouter API
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            try:
-                res = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json=payload,
-                    timeout=30
-                )
-                data = res.json()
-                bot_reply = data["choices"][0]["message"]["content"].strip()
-                if not bot_reply:
-                    bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
-            except Exception:
-                bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
+    try:
+        res = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=30
+        )
+        data = res.json()
+        bot_reply = data["choices"][0]["message"]["content"].strip()
+        if not bot_reply:
+            bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
+    except Exception:
+        bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
 
-            st.markdown(bot_reply)
-            # Update session state
-            st.session_state.messages.append({"role": "assistant", "content": bot_reply})
-            st.session_state.chat_history[-1] = (user_input, bot_reply, datetime.now())
-            render_chat()  # Refresh chat to include assistant reply
+    # Append bot reply
+    st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+    st.session_state.chat_history[-1] = (user_input, bot_reply, datetime.now())
+
+# Finally render chat **once**, after all updates
+render_chat()
