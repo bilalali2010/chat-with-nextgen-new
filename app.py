@@ -24,11 +24,18 @@ FALLBACK_MESSAGES = [
     "That’s tricky! Let’s explore together."
 ]
 
+FUN_ENDINGS = [
+    "😎 Hope that helps!",
+    "🔥 Did you know this?",
+    "🤔 Interesting, right?",
+    "✨ Just a tip!"
+]
+
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
 st.set_page_config(
-    page_title="CHAT WITH NEXTGEN",
+    page_title="ASK ANYTHING ABOUT BILAL",
     layout="centered"
 )
 
@@ -87,14 +94,18 @@ div[data-testid="stChatMessage"][data-role="assistant"] > div {
     border-radius: 20px;
     padding: 10px 15px;
 }
+
+/* Avatars */
+div[data-role="user"]::before { content: "👤"; margin-right: 5px; }
+div[data-role="assistant"]::before { content: "🤖"; margin-right: 5px; }
+
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------
 # SECRET ADMIN URL
 # -----------------------------
-query_params = st.query_params
-IS_ADMIN_PAGE = query_params.get("admin") == ["1"]
+IS_ADMIN_PAGE = "admin" in st.experimental_get_query_params()
 
 # -----------------------------
 # SESSION STATE
@@ -124,46 +135,53 @@ if os.path.exists(KNOWLEDGE_FILE):
 if IS_ADMIN_PAGE:
     st.sidebar.header("🔐 Admin Panel")
 
-    if st.session_state.admin_unlocked:
-        st.sidebar.success("Admin Unlocked")
+    if not st.session_state.admin_unlocked:
+        pwd_input = st.sidebar.text_input("Enter admin password", type="password")
+        if st.sidebar.button("Unlock Admin"):
+            if pwd_input == ADMIN_PASSWORD:
+                st.session_state.admin_unlocked = True
+                st.sidebar.success("Admin unlocked!")
+                st.experimental_rerun()
+            else:
+                st.sidebar.error("Wrong password!")
     else:
-        st.sidebar.warning("Admin Locked")
-        st.sidebar.markdown("**Type password in chat to unlock**")
+        st.sidebar.success("Admin Unlocked")
 
-    uploaded_pdfs = st.sidebar.file_uploader(
-        "Upload PDF Knowledge",
-        type="pdf",
-        accept_multiple_files=True,
-        disabled=not st.session_state.admin_unlocked
-    )
+        uploaded_pdfs = st.sidebar.file_uploader(
+            "Upload PDF Knowledge",
+            type="pdf",
+            accept_multiple_files=True
+        )
 
-    text_knowledge = st.sidebar.text_area(
-        "Add Training Text",
-        height=150,
-        placeholder="Paste custom knowledge here...",
-        disabled=not st.session_state.admin_unlocked
-    )
+        text_knowledge = st.sidebar.text_area(
+            "Add Training Text",
+            height=150,
+            placeholder="Paste custom knowledge here..."
+        )
 
-    if st.sidebar.button("💾 Save Knowledge", disabled=not st.session_state.admin_unlocked):
-        combined_text = ""
+        if st.sidebar.button("💾 Save Knowledge"):
+            combined_text = ""
 
-        if uploaded_pdfs:
-            for file in uploaded_pdfs:
-                reader = PyPDF2.PdfReader(file)
-                for page in reader.pages:
-                    combined_text += page.extract_text() or ""
+            if uploaded_pdfs:
+                for file in uploaded_pdfs:
+                    reader = PyPDF2.PdfReader(file)
+                    for page in reader.pages:
+                        try:
+                            combined_text += page.extract_text() or ""
+                        except:
+                            continue
 
-        if text_knowledge.strip():
-            combined_text += "\n\n" + text_knowledge.strip()
+            if text_knowledge.strip():
+                combined_text += "\n\n" + text_knowledge.strip()
 
-        combined_text = combined_text[:MAX_CONTEXT]
+            combined_text = combined_text[:MAX_CONTEXT]
 
-        if combined_text.strip():
-            with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-                f.write(combined_text)
-            st.sidebar.success("✅ Knowledge saved")
-        else:
-            st.sidebar.warning("⚠️ No content to save")
+            if combined_text.strip():
+                with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+                    f.write(combined_text)
+                st.sidebar.success("✅ Knowledge saved")
+            else:
+                st.sidebar.warning("⚠️ No content to save")
 
 # -----------------------------
 # CHAT DISPLAY
@@ -183,15 +201,6 @@ st.markdown('</div>', unsafe_allow_html=True)
 user_input = st.chat_input("Message...")
 
 if user_input:
-    # 🔐 ADMIN UNLOCK
-    if IS_ADMIN_PAGE and user_input.strip() == ADMIN_PASSWORD:
-        st.session_state.admin_unlocked = True
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "🔐 Admin panel unlocked."
-        })
-        st.experimental_rerun()
-
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.chat_history.append((user_input, "", datetime.now()))
 
@@ -201,11 +210,20 @@ if user_input:
         "Content-Type": "application/json"
     }
 
-    # Include recent chat for context
-    recent_chat = st.session_state.chat_history[-3:]
-    context_messages = "\n".join([f"User: {u}\nBot: {b}" for u, b, t in recent_chat])
+    # Include recent chat intelligently
+    MAX_CONTEXT_CHARS = 2000
+    recent_chat_text = ""
+    for u, b, _ in reversed(st.session_state.chat_history):
+        pair = f"User: {u}\nBot: {b}\n"
+        if len(recent_chat_text) + len(pair) > MAX_CONTEXT_CHARS:
+            break
+        recent_chat_text = pair + recent_chat_text
 
-    prompt_content = f"Document:\n{knowledge}\n\nRecent chat:\n{context_messages}\n\nQuestion:\n{user_input}"
+    # Prompt
+    prompt_content = ""
+    if knowledge.strip():
+        prompt_content += f"Document:\n{knowledge}\n\n"
+    prompt_content += f"Recent chat:\n{recent_chat_text}\n\nQuestion:\n{user_input}"
 
     payload = {
         "model": "nvidia/nemotron-3-nano-30b-a3b:free",
@@ -237,12 +255,9 @@ if user_input:
                 data = res.json()
                 bot_reply = data["choices"][0]["message"]["content"].strip()
                 if not bot_reply:
-                    bot_reply = random.choice(FALLBACK_MESSAGES)
-            except Exception as e:
-                bot_reply = (
-                    "Oops! Something went wrong while fetching the answer. "
-                    "But I'm still here to help, feel free to ask anything!"
-                )
+                    bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
+            except Exception:
+                bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
 
             st.markdown(bot_reply)
             # Update session state
