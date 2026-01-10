@@ -44,7 +44,6 @@ st.set_page_config(
 # -----------------------------
 st.markdown("""
 <style>
-/* Chat container */
 .chat-container {
     max-width: 700px;
     margin: auto;
@@ -56,8 +55,6 @@ st.markdown("""
     max-height: 600px;
     overflow-y: auto;
 }
-
-/* Chat header */
 .chat-header {
     background: linear-gradient(90deg, #4285f4, #5a95f5);
     padding: 15px;
@@ -68,8 +65,6 @@ st.markdown("""
     border-radius: 10px;
     margin-bottom: 10px;
 }
-
-/* User messages */
 div[data-testid="stChatMessage"][data-role="user"] > div {
     background-color: #0b93f6;
     color: white;
@@ -78,8 +73,6 @@ div[data-testid="stChatMessage"][data-role="user"] > div {
     margin: 5px 0;
     max-width: 75%;
 }
-
-/* Assistant messages */
 div[data-testid="stChatMessage"][data-role="assistant"] > div {
     background-color: #e5e5ea;
     color: black;
@@ -88,36 +81,26 @@ div[data-testid="stChatMessage"][data-role="assistant"] > div {
     margin: 5px 0;
     max-width: 75%;
 }
-
-/* Input box */
 .stTextInput>div>div>input {
     border-radius: 20px;
     padding: 10px 15px;
 }
-
-/* Avatars */
 div[data-role="user"]::before { content: "👤"; margin-right: 5px; }
 div[data-role="assistant"]::before { content: "🤖"; margin-right: 5px; }
-
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# SECRET ADMIN URL
+# ADMIN PANEL
 # -----------------------------
 IS_ADMIN_PAGE = "admin" in st.query_params
 
-# -----------------------------
-# SESSION STATE
-# -----------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hi! I’m NEXTGEN, your assistant. Ask me anything!"}
     ]
-
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
-
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -130,11 +113,10 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# ADMIN PANEL
+# ADMIN PANEL SIDEBAR
 # -----------------------------
 if IS_ADMIN_PAGE:
     st.sidebar.header("🔐 Admin Panel")
-
     if not st.session_state.admin_unlocked:
         pwd_input = st.sidebar.text_input("Enter admin password", type="password")
         if st.sidebar.button("Unlock Admin"):
@@ -146,22 +128,14 @@ if IS_ADMIN_PAGE:
                 st.sidebar.error("Wrong password!")
     else:
         st.sidebar.success("Admin Unlocked")
-
         uploaded_pdfs = st.sidebar.file_uploader(
-            "Upload PDF Knowledge",
-            type="pdf",
-            accept_multiple_files=True
+            "Upload PDF Knowledge", type="pdf", accept_multiple_files=True
         )
-
         text_knowledge = st.sidebar.text_area(
-            "Add Training Text",
-            height=150,
-            placeholder="Paste custom knowledge here..."
+            "Add Training Text", height=150, placeholder="Paste custom knowledge here..."
         )
-
         if st.sidebar.button("💾 Save Knowledge"):
             combined_text = ""
-
             if uploaded_pdfs:
                 for file in uploaded_pdfs:
                     reader = PyPDF2.PdfReader(file)
@@ -170,12 +144,9 @@ if IS_ADMIN_PAGE:
                             combined_text += page.extract_text() or ""
                         except:
                             continue
-
             if text_knowledge.strip():
                 combined_text += "\n\n" + text_knowledge.strip()
-
             combined_text = combined_text[:MAX_CONTEXT]
-
             if combined_text.strip():
                 with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
                     f.write(combined_text)
@@ -188,29 +159,22 @@ if IS_ADMIN_PAGE:
 # -----------------------------
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 st.markdown('<div class="chat-header">CHAT WITH NEXTGEN</div>', unsafe_allow_html=True)
-
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-
 st.markdown('</div>', unsafe_allow_html=True)
 
 # -----------------------------
 # CHAT INPUT
 # -----------------------------
-user_input = st.chat_input("Ask NEXTGEN anything...")  # placeholder updated
+user_input = st.chat_input("Ask NEXTGEN anything...")
 
 if user_input:
+    # Add user message immediately so it appears in chat
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.chat_history.append((user_input, "", datetime.now()))
 
-    # Prepare API payload
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    # Include recent chat intelligently
+    # Prepare recent chat context
     MAX_CONTEXT_CHARS = 2000
     recent_chat_text = ""
     for u, b, _ in reversed(st.session_state.chat_history):
@@ -219,7 +183,6 @@ if user_input:
             break
         recent_chat_text = pair + recent_chat_text
 
-    # Prompt
     prompt_content = ""
     if knowledge.strip():
         prompt_content += f"Document:\n{knowledge}\n\n"
@@ -228,18 +191,17 @@ if user_input:
     payload = {
         "model": "nvidia/nemotron-3-nano-30b-a3b:free",
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are CHAT WITH NEXTGEN assistant. "
-                    "Answer concisely using the document if possible. "
-                    "If the information is missing, respond in a helpful, friendly, or entertaining way. "
-                    "Never reply empty or 'Information not available'. Always engage the user."
-                )
-            },
+            {"role": "system",
+             "content": (
+                 "You are CHAT WITH NEXTGEN assistant. "
+                 "Answer concisely using the document if possible. "
+                 "If the information is missing, respond in a helpful, friendly, or entertaining way. "
+                 "Never reply empty or 'Information not available'. Always engage the user."
+             )
+             },
             {"role": "user", "content": prompt_content}
         ],
-        "max_output_tokens": 80,
+        "max_output_tokens": 150,
         "temperature": 0.4
     }
 
@@ -249,7 +211,8 @@ if user_input:
             try:
                 res = requests.post(
                     "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
+                    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                             "Content-Type": "application/json"},
                     json=payload,
                     timeout=30
                 )
@@ -261,5 +224,6 @@ if user_input:
                 bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
 
             st.markdown(bot_reply)
+            # Update session state
             st.session_state.messages.append({"role": "assistant", "content": bot_reply})
             st.session_state.chat_history[-1] = (user_input, bot_reply, datetime.now())
