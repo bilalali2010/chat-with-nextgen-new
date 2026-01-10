@@ -155,14 +155,17 @@ if IS_ADMIN_PAGE:
                 st.sidebar.warning("⚠️ No content to save")
 
 # -----------------------------
-# CHAT DISPLAY
+# CHAT DISPLAY FUNCTION
 # -----------------------------
-st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-st.markdown('<div class="chat-header">CHAT WITH NEXTGEN</div>', unsafe_allow_html=True)
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-st.markdown('</div>', unsafe_allow_html=True)
+def render_chat():
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    st.markdown('<div class="chat-header">CHAT WITH NEXTGEN</div>', unsafe_allow_html=True)
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+    st.markdown('</div>', unsafe_allow_html=True)
+
+render_chat()
 
 # -----------------------------
 # CHAT INPUT
@@ -170,9 +173,12 @@ st.markdown('</div>', unsafe_allow_html=True)
 user_input = st.chat_input("Ask NEXTGEN anything...")
 
 if user_input:
-    # Add user message immediately so it appears in chat
+    # Add user message to chat
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.chat_history.append((user_input, "", datetime.now()))
+
+    # Refresh chat so user question appears immediately
+    render_chat()
 
     # Prepare recent chat context
     MAX_CONTEXT_CHARS = 2000
@@ -211,8 +217,10 @@ if user_input:
             try:
                 res = requests.post(
                     "https://openrouter.ai/api/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                             "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
                     json=payload,
                     timeout=30
                 )
@@ -227,3 +235,4 @@ if user_input:
             # Update session state
             st.session_state.messages.append({"role": "assistant", "content": bot_reply})
             st.session_state.chat_history[-1] = (user_input, bot_reply, datetime.now())
+            render_chat()  # Refresh chat to include assistant reply
