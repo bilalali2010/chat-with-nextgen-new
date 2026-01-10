@@ -35,7 +35,7 @@ FUN_ENDINGS = [
 # PAGE CONFIG
 # -----------------------------
 st.set_page_config(
-    page_title="ASK ANYTHING ABOUT BILAL",
+    page_title="CHAT WITH NEXTGEN",
     layout="centered"
 )
 
@@ -105,14 +105,14 @@ div[data-role="assistant"]::before { content: "🤖"; margin-right: 5px; }
 # -----------------------------
 # SECRET ADMIN URL
 # -----------------------------
-IS_ADMIN_PAGE = "admin" in st.experimental_get_query_params()
+IS_ADMIN_PAGE = "admin" in st.query_params
 
 # -----------------------------
 # SESSION STATE
 # -----------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Hi! I’m here to help you. Ask me anything about Bilal!"}
+        {"role": "assistant", "content": "Hi! I’m NEXTGEN, your assistant. Ask me anything!"}
     ]
 
 if "admin_unlocked" not in st.session_state:
@@ -198,7 +198,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 # -----------------------------
 # CHAT INPUT
 # -----------------------------
-user_input = st.chat_input("Message...")
+user_input = st.chat_input("Ask NEXTGEN anything...")  # placeholder updated
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -231,6 +231,7 @@ if user_input:
             {
                 "role": "system",
                 "content": (
+                    "You are CHAT WITH NEXTGEN assistant. "
                     "Answer concisely using the document if possible. "
                     "If the information is missing, respond in a helpful, friendly, or entertaining way. "
                     "Never reply empty or 'Information not available'. Always engage the user."
@@ -260,6 +261,5 @@ if user_input:
                 bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
 
             st.markdown(bot_reply)
-            # Update session state
             st.session_state.messages.append({"role": "assistant", "content": bot_reply})
             st.session_state.chat_history[-1] = (user_input, bot_reply, datetime.now())
